@@ -5,14 +5,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-
-	"golang.org/x/exp/slices"
 )
 
 type ServerHandlerFunc func(request *http.Request, response http.ResponseWriter) error
 
 type ServerInterface interface {
-	Get(path string, handler ServerHandlerFunc) error
+	Get(routes ...Route)
 	Init() error
 }
 
@@ -21,12 +19,6 @@ const (
 	GET                     = "GET"
 	HEADER_KEY_CONTENT_TYPE = "Content-Type"
 )
-
-type Route struct {
-	method  string
-	handler ServerHandlerFunc
-	path    string
-}
 
 type Server struct {
 	Port        int
@@ -54,18 +46,29 @@ type Handler struct {
 	ContentType *string
 }
 
-func (h Handler) MatchRoute(method string, path string) (bool, *Route) {
-	idx := slices.IndexFunc(*h.Routes, func(route Route) bool {
-		return route.method == method && route.path == path
-	})
+func (h Handler) ExecuteRoutes(routes []*Route, request *http.Request, response http.ResponseWriter) error {
+	var controller = NewController(request, response)
 
-	if idx == -1 {
-		return false, &Route{}
+	for _, route := range routes {
+		err := route.Handler(request, controller)
+		if err != nil {
+			return err
+		}
 	}
 
-	route := &(*h.Routes)[idx]
+	return nil
+}
 
-	return true, route
+func (h Handler) MatchRoutes(method string, path string) []*Route {
+	var result []*Route
+
+	for _, route := range *h.Routes {
+		if route.Method == method && route.Path == path {
+			result = append(result, &route)
+		}
+	}
+
+	return result
 }
 
 func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -76,7 +79,7 @@ func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			response.Header()
 			response.WriteHeader(http.StatusInternalServerError)
 			response.Write([]byte(http.StatusText(http.StatusInternalServerError)))
-			log.Printf("Got error while handling request, sent response: %+v\n", response)
+			log.Printf("Got error while handling request: %+v, response: %+v\n", r, response)
 			return
 		}
 
@@ -91,14 +94,14 @@ func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 
 	defer request.Body.Close()
 
-	found, route := h.MatchRoute(request.Method, request.URL.Path)
+	routes := h.MatchRoutes(request.Method, request.URL.Path)
 
-	bodyBytes, bodyErr := io.ReadAll(request.Body)
+	bodyBytes, err := io.ReadAll(request.Body)
 
 	body := string(bodyBytes)
 
-	if bodyErr != nil {
-		log.Printf("Got error while parsing request body: %+v\n", bodyErr)
+	if err != nil {
+		log.Printf("Got error while parsing request body: %+v\n", err)
 		panic("FAILED_PARSE_REQUEST_BODY")
 	}
 
@@ -111,15 +114,15 @@ func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 
 	log.Printf("Got incoming request: %+v\n", requestForLog)
 
-	if !found {
+	if len(routes) == 0 {
 		log.Printf("Not found handler for request")
 		panic("NOT_FOUND_HANDLER")
 	}
 
-	handlerErr := route.handler(request, response)
+	err = h.ExecuteRoutes(routes, request, response)
 
-	if handlerErr != nil {
-		log.Printf("Failed execution handler for request: %+v", handlerErr)
+	if err != nil {
+		log.Printf("Failed execution handler for request: %+v", err)
 		panic("FAILED_EXECUTION_HANDLER")
 	}
 }
@@ -158,12 +161,10 @@ func (s *Server) Init() error {
 	return nil
 }
 
-func (s *Server) Get(path string, handler ServerHandlerFunc) error {
-	s.routes = append(s.routes, Route{
-		path:    path,
-		handler: handler,
-		method:  GET,
-	})
+func (s *Server) Get(routes ...Route) {
+	for index := range routes {
+		routes[index].Method = "GET"
+	}
 
-	return nil
+	s.routes = append(s.routes, routes...)
 }

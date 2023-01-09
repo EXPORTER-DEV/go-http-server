@@ -1,7 +1,7 @@
 package main
 
 import (
-	"exporter-dev/http-server/server"
+	server "exporter-dev/http-server/lib/core"
 	"net/http"
 )
 
@@ -10,10 +10,12 @@ func main() {
 		Port: 3000,
 	}
 
-	instance.Get("/index", func(request *http.Request, response http.ResponseWriter) error {
-		response.Write([]byte("Test"))
+	instance.Get(*server.NewRoute("/index", func(request *http.Request, controller *server.Controller) error {
+		controller.Status(201)
+		controller.Header.Add("Test", "test1")
+		controller.Send("OK")
 		return nil
-	})
+	}))
 
 	instance.Init()
 }
