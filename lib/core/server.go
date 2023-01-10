@@ -1,13 +1,10 @@
 package server
 
 import (
-	"io"
 	"log"
 	"net/http"
 	"strconv"
 )
-
-type ServerHandlerFunc func(request *http.Request, response http.ResponseWriter) error
 
 type ServerInterface interface {
 	Get(routes ...Route)
@@ -21,11 +18,10 @@ const (
 )
 
 type Server struct {
-	Port        int
-	Host        string
-	ContentType string
-	routes      []Route
-	server      *http.Server
+	Port   int
+	Host   string
+	routes []Route
+	server *http.Server
 }
 
 type RequestForLog struct {
@@ -42,89 +38,13 @@ type ResponseForLog struct {
 }
 
 type Handler struct {
-	Routes      *[]Route
-	ContentType *string
-}
-
-func (h Handler) ExecuteRoutes(routes []*Route, request *http.Request, response http.ResponseWriter) error {
-	var controller = NewController(request, response)
-
-	for _, route := range routes {
-		err := route.Handler(request, controller)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (h Handler) MatchRoutes(method string, path string) []*Route {
-	var result []*Route
-
-	for _, route := range *h.Routes {
-		if route.Method == method && route.Path == path {
-			result = append(result, &route)
-		}
-	}
-
-	return result
+	Routing *Routing
 }
 
 func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	defer func() {
-		r := recover()
+	route := h.Routing.Match(request.Method, request.URL.Path)
 
-		if r != nil {
-			response.Header()
-			response.WriteHeader(http.StatusInternalServerError)
-			response.Write([]byte(http.StatusText(http.StatusInternalServerError)))
-			log.Printf("Got error while handling request: %+v, response: %+v\n", r, response)
-			return
-		}
-
-		contentType := response.Header().Get(HEADER_KEY_CONTENT_TYPE)
-
-		if contentType == "" && *h.ContentType != "" {
-			response.Header().Add(HEADER_KEY_CONTENT_TYPE, *h.ContentType)
-		}
-
-		log.Printf("Got response for request: %+v", response)
-	}()
-
-	defer request.Body.Close()
-
-	routes := h.MatchRoutes(request.Method, request.URL.Path)
-
-	bodyBytes, err := io.ReadAll(request.Body)
-
-	body := string(bodyBytes)
-
-	if err != nil {
-		log.Printf("Got error while parsing request body: %+v\n", err)
-		panic("FAILED_PARSE_REQUEST_BODY")
-	}
-
-	requestForLog := RequestForLog{
-		Method:     request.Method,
-		Url:        request.URL.String(),
-		Body:       body,
-		RemoteAddr: request.RemoteAddr,
-	}
-
-	log.Printf("Got incoming request: %+v\n", requestForLog)
-
-	if len(routes) == 0 {
-		log.Printf("Not found handler for request")
-		panic("NOT_FOUND_HANDLER")
-	}
-
-	err = h.ExecuteRoutes(routes, request, response)
-
-	if err != nil {
-		log.Printf("Failed execution handler for request: %+v", err)
-		panic("FAILED_EXECUTION_HANDLER")
-	}
+	h.Routing.Execute(route, request, response)
 }
 
 func (s *Server) Init() error {
@@ -142,9 +62,12 @@ func (s *Server) Init() error {
 
 	mux := http.NewServeMux()
 
+	routing := Routing{
+		Routes: s.routes,
+	}
+
 	mux.Handle("/", Handler{
-		Routes:      &s.routes,
-		ContentType: &s.ContentType,
+		Routing: &routing,
 	})
 
 	s.server = &http.Server{

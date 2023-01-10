@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"strings"
 )
@@ -19,7 +20,59 @@ type ControllerInterface interface {
 type Response struct {
 	Content *[]byte
 	Status  *int
-	Headers *map[string][]string
+	Headers map[string][]string
+}
+
+type Request struct {
+	Headers    map[string][]string
+	Body       string
+	Content    *[]byte
+	Query      map[string][]string
+	Path       string
+	Url        string
+	Params     Params
+	RemoteAddt string
+	Context    interface{}
+}
+
+func getRequestBody(request *http.Request) (content *[]byte, body string, err error) {
+	bytes, err := io.ReadAll(request.Body)
+
+	defer func() {
+		request.Body.Close()
+	}()
+
+	if err != nil {
+		return &[]byte{}, "", err
+	}
+
+	content = &bytes
+
+	body = string(bytes)
+
+	return
+}
+
+func NewRequest(request *http.Request, params Params) (*Request, error) {
+	content, body, err := getRequestBody(request)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var context interface{}
+
+	return &Request{
+		Headers:    request.Header,
+		Body:       body,
+		Content:    content,
+		Query:      request.URL.Query(),
+		Path:       request.URL.Path,
+		Url:        request.URL.String(),
+		Params:     params,
+		RemoteAddt: request.RemoteAddr,
+		Context:    context,
+	}, nil
 }
 
 type Controller struct {
@@ -31,8 +84,6 @@ type Controller struct {
 	Header   *ControllerHeader
 	Response *Response
 }
-
-type ControllerHandler = func(request *http.Request, response Response)
 
 func NewController(request *http.Request, response http.ResponseWriter) *Controller {
 	var controller *Controller = &Controller{
@@ -49,7 +100,7 @@ func NewController(request *http.Request, response http.ResponseWriter) *Control
 	controller.Response = &Response{
 		Content: &controller.content,
 		Status:  &controller.status,
-		Headers: &controller.headers,
+		Headers: controller.headers,
 	}
 
 	return controller
