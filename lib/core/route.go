@@ -71,7 +71,7 @@ func (r *Routing) Match(method string, path string) *MatchedRoute {
 					routeParamNames := []string{}
 
 					for _, indexes := range routeParamsMatch {
-						name := routePathRegexp[indexes[2]:indexes[3]]
+						name := routePathRegexp[indexes[2]+1 : indexes[3]]
 
 						routeParamNames = append(routeParamNames, name)
 
@@ -83,8 +83,6 @@ func (r *Routing) Match(method string, path string) *MatchedRoute {
 					pathMatch := pathRegexp.FindAllSubmatchIndex([]byte(path), -1)
 
 					if len(pathMatch) > 0 {
-						params := make(map[string]string)
-
 						for index, matchIndexes := range pathMatch {
 							value := path[matchIndexes[2]:matchIndexes[3]]
 
