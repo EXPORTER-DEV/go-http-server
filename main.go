@@ -6,9 +6,29 @@ import (
 )
 
 func main() {
-	var instance server.ServerInterface = &server.Server{
+	var instance = &server.Server{
 		Port: 3000,
 	}
+
+	instance.Use(
+		*server.NewMiddleware(
+			func(request *server.Request, controller *server.Controller) (skip bool, err error) {
+				if request.Headers["Auth"] != nil {
+					log.Printf("User authorized!")
+					request.Context.Set("Auth", "1")
+				}
+
+				return false, nil
+			},
+		),
+		*server.NewMiddleware(
+			func(request *server.Request, controller *server.Controller) (skip bool, err error) {
+				log.Println("/index only middleware")
+
+				return false, nil
+			},
+		).AddPath("/index"),
+	)
 
 	instance.Get(
 		*server.NewRoute(
@@ -23,7 +43,11 @@ func main() {
 		*server.NewRoute(
 			"/index/:param/",
 			func(request *server.Request, controller *server.Controller) error {
-				controller.Status(200)
+				if request.Context.Get("Auth") == "" {
+					controller.Status(401)
+				} else {
+					controller.Status(200)
+				}
 
 				params := ""
 
@@ -37,10 +61,7 @@ func main() {
 				controller.Send("Your params: " + params)
 				return nil
 			},
-			server.RouteOptions{
-				HasParams: true,
-			},
-		),
+		).SetParseParams(true),
 	)
 
 	instance.Init()
