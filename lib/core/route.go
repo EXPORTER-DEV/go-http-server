@@ -3,7 +3,6 @@ package server
 import (
 	"log"
 	"net/http"
-	"regexp"
 )
 
 type RouteHandler func(request *Request, controller *Controller) error
@@ -14,30 +13,27 @@ type Route struct {
 	ContentType string
 	Path        string
 	IsRegexp    bool
-	HasParams   bool
+	ParseParams bool
 }
 
-type RouteOptions struct {
-	HasParams bool
-	IsRegexp  bool
-}
-
-func NewRoute(path string, handler RouteHandler, options ...RouteOptions) *Route {
-	routeOptions := RouteOptions{}
-
-	if len(options) > 0 {
-		routeOptions = options[0]
-	}
-
+func NewRoute(path string, handler RouteHandler) *Route {
 	return &Route{
-		Handler:   handler,
-		Path:      path,
-		IsRegexp:  routeOptions.IsRegexp,
-		HasParams: routeOptions.HasParams,
+		Handler: handler,
+		Path:    path,
 	}
 }
 
-type Params map[string]string
+func (r *Route) SetIsRegexp(value bool) *Route {
+	r.IsRegexp = value
+
+	return r
+}
+
+func (r *Route) SetParseParams(value bool) *Route {
+	r.ParseParams = value
+
+	return r
+}
 
 type MatchedRoute struct {
 	Route  *Route
@@ -50,54 +46,18 @@ type Routing struct {
 
 func (r *Routing) Match(method string, path string) *MatchedRoute {
 	for i, route := range r.Routes {
-		var isEqual bool = false
-		var params = make(map[string]string)
-
 		if route.Method == method {
-			if route.IsRegexp {
-				r := regexp.MustCompile(route.Path)
-				if r.Match([]byte(path)) {
-					isEqual = true
-				}
-			}
-			if route.HasParams {
-				routeParamsRegexp := regexp.MustCompile(`(\:[a-zA-Z]+)`)
-
-				routeParamsMatch := routeParamsRegexp.FindAllSubmatchIndex([]byte(route.Path), -1)
-
-				if len(routeParamsMatch) > 0 {
-					routePathRegexp := route.Path
-
-					routeParamNames := []string{}
-
-					for _, indexes := range routeParamsMatch {
-						name := routePathRegexp[indexes[2]+1 : indexes[3]]
-
-						routeParamNames = append(routeParamNames, name)
-
-						routePathRegexp = routePathRegexp[:indexes[0]] + "(.*)" + routePathRegexp[indexes[1]:]
-					}
-
-					pathRegexp := regexp.MustCompile(routePathRegexp)
-
-					pathMatch := pathRegexp.FindAllSubmatchIndex([]byte(path), -1)
-
-					if len(pathMatch) > 0 {
-						for index, matchIndexes := range pathMatch {
-							value := path[matchIndexes[2]:matchIndexes[3]]
-
-							params[routeParamNames[index]] = value
-						}
-
-						isEqual = true
-					}
-				}
-			}
-			if !isEqual && route.Path == path {
-				isEqual = true
+			matching := &Matching{
+				RequestedPath: path,
+				HandlerPath:   route.Path,
 			}
 
-			if isEqual {
+			result, params := matching.Execute(MatchingExecuteOptions{
+				ParseParams: route.ParseParams,
+				IsRegexp:    route.IsRegexp,
+			})
+
+			if result {
 				return &MatchedRoute{
 					Route:  &r.Routes[i],
 					Params: params,
@@ -109,45 +69,29 @@ func (r *Routing) Match(method string, path string) *MatchedRoute {
 	return nil
 }
 
-func (r *Routing) Execute(route *MatchedRoute, request *http.Request, response http.ResponseWriter) {
+func (r *Routing) Execute(route *MatchedRoute, request *Request, controller *Controller) {
 	var logger = log.New(log.Writer(), "Routing.Execute", log.Flags())
 
-	if route == nil {
-		logger.Printf("Got no handler for request (%v) %+v\n", request.Method, request.URL.Path)
-		return
-	}
-
-	var controller = NewController(request, response)
-	var requestWrapper, err = NewRequest(request, route.Params)
-
-	logger.Printf("Got request: %+v\n", requestWrapper)
-
-	if err != nil {
-		logger.Printf("Got error while prepare request: %+v\n", err)
-		r.Catch(err, controller, requestWrapper, response)
-		return
-	}
+	logger.Printf("Got request: %+v\n", request)
 
 	defer func() {
 		recovered := recover()
 
 		if recovered != nil {
-			r.Catch(recovered, controller, requestWrapper, response)
+			r.Catch(recovered, controller, request, controller.response)
 		}
 	}()
 
-	err = route.Route.Handler(requestWrapper, controller)
+	if route.Route.ContentType != "" {
+		controller.response.Header().Add(HEADER_KEY_CONTENT_TYPE, route.Route.ContentType)
+	}
+
+	err := route.Route.Handler(request, controller)
 
 	if err != nil {
 		logger.Printf("Got error while execute request handler: %+v\n", err)
-		r.Catch(err, controller, requestWrapper, response)
+		r.Catch(err, controller, request, controller.response)
 		return
-	}
-
-	contentType := response.Header().Get(HEADER_KEY_CONTENT_TYPE)
-
-	if contentType == "" && route.Route.ContentType != "" {
-		response.Header().Add(HEADER_KEY_CONTENT_TYPE, route.Route.ContentType)
 	}
 
 	logger.Printf("Got status: %d, response: %+v", controller.status, string(controller.content))

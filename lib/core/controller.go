@@ -32,7 +32,9 @@ type Request struct {
 	Url        string
 	Params     Params
 	RemoteAddt string
-	Context    interface{}
+	Method     string
+	Context    *Context
+	Route      *Route
 }
 
 func getRequestBody(request *http.Request) (content *[]byte, body string, err error) {
@@ -53,14 +55,8 @@ func getRequestBody(request *http.Request) (content *[]byte, body string, err er
 	return
 }
 
-func NewRequest(request *http.Request, params Params) (*Request, error) {
+func NewRequest(request *http.Request, params Params, route *Route) (*Request, error) {
 	content, body, err := getRequestBody(request)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var context interface{}
 
 	return &Request{
 		Headers:    request.Header,
@@ -71,8 +67,10 @@ func NewRequest(request *http.Request, params Params) (*Request, error) {
 		Url:        request.URL.String(),
 		Params:     params,
 		RemoteAddt: request.RemoteAddr,
-		Context:    context,
-	}, nil
+		Context:    &Context{Store: make(map[string]string)},
+		Method:     request.Method,
+		Route:      route,
+	}, err
 }
 
 type Controller struct {
@@ -136,15 +134,15 @@ func (controller *Controller) Status(status int) {
 }
 
 // Get header by key, if ignoreCase is true - will ignore case when matching headers
-func (header *ControllerHeader) Get(key string, ignoreCase bool) []string {
+func (header *ControllerHeader) Get(key string, ignoreCase ...bool) []string {
 	var found []string = []string{}
 
-	if ignoreCase {
+	if ignoreCase[0] {
 		key = strings.ToLower(key)
 	}
 
 	for headerKey, values := range header.controller.headers {
-		if ignoreCase {
+		if ignoreCase[0] {
 			headerKey = strings.ToLower(headerKey)
 		}
 
