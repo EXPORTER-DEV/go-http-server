@@ -91,7 +91,7 @@ func (m *Middlewaring) Execute(request *Request, controller *Controller) (skip b
 		}
 
 		if validate {
-			middlewares = append(middlewares, middlewares[index])
+			middlewares = append(middlewares, m.Middlewares[index])
 		}
 	}
 

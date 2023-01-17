@@ -23,6 +23,14 @@ func NewRoute(path string, handler RouteHandler) *Route {
 	}
 }
 
+func NewRouteGroup(path string, routes ...Route) []Route {
+	for index := range routes {
+		routes[index].Path = path + routes[index].Path
+	}
+
+	return routes
+}
+
 func (r *Route) SetIsRegexp(value bool) *Route {
 	r.IsRegexp = value
 

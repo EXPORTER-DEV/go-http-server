@@ -30,9 +30,10 @@ func main() {
 		).AddPath("/index"),
 	)
 
-	instance.Get(
+	indexRouteGroup := server.NewRouteGroup(
+		"/index",
 		*server.NewRoute(
-			"/index",
+			"",
 			func(request *server.Request, controller *server.Controller) error {
 				controller.Status(201)
 				controller.Header.Add("Test", "test1")
@@ -41,7 +42,7 @@ func main() {
 			},
 		),
 		*server.NewRoute(
-			"/index/:param/",
+			"/:param/",
 			func(request *server.Request, controller *server.Controller) error {
 				if request.Context.Get("Auth") == "" {
 					controller.Status(401)
@@ -62,6 +63,10 @@ func main() {
 				return nil
 			},
 		).SetParseParams(true),
+	)
+
+	instance.Get(
+		indexRouteGroup...,
 	)
 
 	instance.Init()
