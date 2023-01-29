@@ -109,7 +109,7 @@ func NewController(request *http.Request, response http.ResponseWriter) *Control
 	return controller
 }
 
-// Send string content to client
+// Send string content, all header and status to client
 func (controller *Controller) Send(content string) error {
 	if len(content) > 0 {
 		controller.content = append(controller.content, []byte(content)...)
