@@ -17,6 +17,8 @@ type MatchingExecuteOptions struct {
 func (m *Matching) ParseParams() Params {
 	routeParamsRegexp := regexp.MustCompile(`(\:[a-zA-Z]+)`)
 
+	paramRegexp := "(.+)"
+
 	routeParamsMatch := routeParamsRegexp.FindAllSubmatchIndex([]byte(m.HandlerPath), -1)
 
 	if len(routeParamsMatch) > 0 {
@@ -24,25 +26,30 @@ func (m *Matching) ParseParams() Params {
 
 		routeParamNames := []string{}
 
+		diff := 0
+
 		for _, indexes := range routeParamsMatch {
-			name := routePathRegexp[indexes[2]+1 : indexes[3]]
+			name := routePathRegexp[indexes[2]+diff+1 : indexes[3]+diff]
 
 			routeParamNames = append(routeParamNames, name)
 
-			routePathRegexp = routePathRegexp[:indexes[0]] + "(.*)" + routePathRegexp[indexes[1]:]
+			routePathRegexp = routePathRegexp[:indexes[0]+diff] + paramRegexp + routePathRegexp[indexes[1]+diff:]
+
+			diff += len(paramRegexp) - (indexes[3] - indexes[2])
 		}
 
-		pathRegexp := regexp.MustCompile(routePathRegexp)
+		pathRegexp := regexp.MustCompile(`^` + routePathRegexp + `$`)
 
 		pathMatch := pathRegexp.FindAllSubmatchIndex([]byte(m.RequestedPath), -1)
 
 		if len(pathMatch) > 0 {
 			params := Params{}
 
-			for index, matchIndexes := range pathMatch {
-				value := m.RequestedPath[matchIndexes[2]:matchIndexes[3]]
+			for index := 2; index < len(pathMatch[0]); index += 2 {
+				matchIndexes := pathMatch[0][index : index+2]
+				value := m.RequestedPath[matchIndexes[0]:matchIndexes[1]]
 
-				params[routeParamNames[index]] = value
+				params[routeParamNames[(index/2)-1]] = value
 			}
 
 			return params
