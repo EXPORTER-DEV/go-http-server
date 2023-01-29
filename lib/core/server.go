@@ -18,6 +18,13 @@ type Server struct {
 	routes      []Route
 	middlewares []Middleware
 	server      *http.Server
+	inited      bool
+}
+
+func NewServer() *Server {
+	return &Server{
+		Port: 80,
+	}
 }
 
 type RequestForLog struct {
@@ -70,6 +77,26 @@ func (h Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	if !skip {
 		h.Routing.Execute(route, requestWrapper, controller)
 	}
+}
+
+func (s *Server) SetPort(port int) *Server {
+	if s.inited {
+		panic("Should set Port before Server.Init()")
+	}
+
+	s.Port = port
+
+	return s
+}
+
+func (s *Server) SetHost(host string) *Server {
+	if s.inited {
+		panic("Should set Host before Server.Init()")
+	}
+
+	s.Host = host
+
+	return s
 }
 
 func (s *Server) Init() error {
