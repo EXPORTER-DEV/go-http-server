@@ -2,8 +2,14 @@ package main
 
 import (
 	server "exporter-dev/http-server/lib/core"
+	"fmt"
 	"log"
 )
+
+type Test struct {
+	a string
+	b int
+}
 
 func main() {
 	var instance = &server.Server{
@@ -13,9 +19,14 @@ func main() {
 	instance.Use(
 		*server.NewMiddleware(
 			func(request *server.Request, controller *server.Controller) (skip bool, err error) {
+				request.Context.Set("Test", Test{
+					a: "test",
+					b: 0,
+				})
+
 				if request.Headers["Auth"] != nil {
 					log.Printf("User authorized!")
-					request.Context.Set("Auth", "1")
+					request.Context.Set("Auth", true)
 				}
 
 				return false, nil
@@ -44,7 +55,13 @@ func main() {
 		*server.NewRoute(
 			"/:param/",
 			func(request *server.Request, controller *server.Controller) error {
-				if request.Context.Get("Auth") == "" {
+				test := server.BindContext[Test](request.Context, "Test")
+
+				fmt.Printf("Got Test structure from Context: %v\n", test)
+
+				auth := server.BindContext[bool](request.Context, "Auth")
+
+				if !auth {
 					controller.Status(401)
 				} else {
 					controller.Status(200)

@@ -35,8 +35,10 @@ type Request struct {
 	Method     string
 	Context    *Context
 	Route      *Route
+	Original   *http.Request
 }
 
+// Read request body
 func getRequestBody(request *http.Request) (content *[]byte, body string, err error) {
 	bytes, err := io.ReadAll(request.Body)
 
@@ -55,10 +57,12 @@ func getRequestBody(request *http.Request) (content *[]byte, body string, err er
 	return
 }
 
+// Creates new Request
 func NewRequest(request *http.Request, params Params, route *Route) (*Request, error) {
 	content, body, err := getRequestBody(request)
 
 	return &Request{
+		Original:   request,
 		Headers:    request.Header,
 		Body:       body,
 		Content:    content,
@@ -67,7 +71,7 @@ func NewRequest(request *http.Request, params Params, route *Route) (*Request, e
 		Url:        request.URL.String(),
 		Params:     params,
 		RemoteAddt: request.RemoteAddr,
-		Context:    &Context{Store: make(map[string]string)},
+		Context:    &Context{Store: make(map[string]any)},
 		Method:     request.Method,
 		Route:      route,
 	}, err
@@ -83,6 +87,7 @@ type Controller struct {
 	Response *Response
 }
 
+// Creates new Controller
 func NewController(request *http.Request, response http.ResponseWriter) *Controller {
 	var controller *Controller = &Controller{
 		request:  request,
